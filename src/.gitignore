@@ -1,0 +1,17 @@
+__pycache__/
+data/
+logs/no-attack-sender_log.txt
+logs/receiver_log-bs1800000-bd50-ib100-d60.txt
+logs/sender_log-bs1800000-bd20-ib50-d60.txt
+logs/sender_log-bs1800000-bd40-ib100-d60..txt
+logs/sender_log-bs1800000-bd50-ib100-d60.txt
+logs/sender_log_volumetric.txt
+src/2024-11-19_18-19-36_sender_log.txt
+src/2024-11-19_18-24-41_sender_log.txt
+src/2024-11-19_18-38-03_sender_log.txt
+src/2024-11-19_18-41-56_sender_log.txt
+src/2024-11-19_18-43-25_sender_log.txt
+src/2024-11-19_19-09-49_sender_log.txt
+src/2024-11-19_19-17-05_sender_log.txt
+src/2024-11-19_19-17-37_sender_log.txt
+src/2024-11-19_20-55-07_sender_log.txt
