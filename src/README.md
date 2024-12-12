@@ -69,7 +69,7 @@ python3 parse_mahimahi.py -i <input_file> -o <output_file>
 
 ### run_experiment.sh
 - Configures logfile paths and launches sender and receiver processes.
-- Manages main attack modules (`mm-bbr-attack` and `mm-copa-attack`).
+- Manages main attack modules (eg.`mm-bbr-attack` and `mm-copa-attack`) and creating a topology for copa attack 2 and no attack scenario.
 - Calls `bottleneck_box.sh`.
 
 ### bottleneck_box.sh
