@@ -26,8 +26,7 @@ mkdir -p $RAMDISK_DATA_PATH
 
 # Define the attack flag for copa attack2 (cross-traffic)
 bbrAtt1=false
-copaAtt1=false
-copaAtt2=false
+copaAtt=false
 noAttBBR=false
 
 # Check if the first argument is copa attack2
@@ -35,22 +34,17 @@ if [[ $1 == "bbrAtt1" ]]; then
     bbrAtt1=true
     shift  # Shift parameters so $1 becomes pkts_per_ms and others
 
-elif [[ $1 == "copaAtt1" ]]; then
-    copaAtt1=true
+elif [[ $1 == "copaAtt" ]]; then
+    copaAtt=true
     shift
 
-elif [[ $1 == "copaAtt2" ]]; then
-    copaAtt2=true
-    shift
-
-elif [[ $1 == "noAttBBR" ]]; then
-    noAttBBR=true
+elif [[ $1 == "noAtt" ]]; then
+    noAtt=true
     shift
 fi
 
 export bbrAtt1
-export copaAtt1
-export copaAtt2 # Exporting so it's available to sender.sh
+export copaAtt # Exporting so it's available to sender.sh
 export noAttBBR
 
 pkts_per_ms=$1
@@ -63,19 +57,20 @@ downlink_trace_file=$7
 port=$8
 n_parallel=1
 
-if [[ $copaAtt1 == true ]]; then
-    delay_budget=${11}
-    duration=${12}
-    interval=${13}
-    # tbf_size_bdp=${10}
-fi
-
-if [[ $copaAtt2 == true ]]; then
+if [[ $CCA == "copa" ]]; then
     copaAtt2_port=$9
     delay_budget=${12}
     burst_duration=${13}
     inter_burst_time=${14}
+    copa_attack_type=${15}  # value will be 1 or 2
     # tbf_size_bdp=${11}
+fi
+
+if [[ $CCA == "bbr" ]]; then
+    #attack variables
+    attack_rate=${11:-150}       # Dynamic attack rate input
+    queue_size=${12:-0}          # Queue size for attack
+    delay_budget=${13:-500}      # Max allowable delay for attack
 fi
 
 is_genericcc=false
@@ -100,13 +95,13 @@ buf_size_bytes=$(echo "$buf_size_bdp*$bdp_bytes/1" | bc)
 if [[ $bbrAtt1 == true ]]; then 
     exp_tag="rate[$pkts_per_ms]-delay[$delay_ms]-buf_size[$buf_size_bdp]-cca[$cca]"
 
-elif [[ $copaAtt1 == true ]]; then 
-    exp_tag="rate[$pkts_per_ms]-delay[$delay_ms]-buf_size[$buf_size_bdp]-cca[$cca]-delay_budget[$delay_budget]-mode[$mode]-duration[$duration]-interval[$interval]"
+elif [[ $copaAtt == true ]] && [[ $copa_attack_type == 1 ]]; then 
+    exp_tag="rate[$pkts_per_ms]-delay[$delay_ms]-buf_size[$buf_size_bdp]-cca[$cca]-delay_budget[$delay_budget]-mode[$mode]-duration[$burst_duration]-interval[$inter_burst_time]"
 
-elif [[ $copaAtt2 == true ]]; then 
+elif [[ $copaAtt == true ]] && [[ $copa_attack_type == 2 ]]; then 
     exp_tag="rate[$pkts_per_ms]-delay[$delay_ms]-buf_size[$buf_size_bdp]-cca[$cca]-delay_budget[$delay_budget]-bd[$burst_duration]-ib[$inter_burst_time]"
 
-elif [[ $noAttBBR == true ]]; then 
+elif [[ $noAtt == true ]]; then 
     exp_tag="rate[$pkts_per_ms]-delay[$delay_ms]-buf_size[$buf_size_bdp]-cca[$cca]"
 
 else
@@ -160,35 +155,43 @@ if [[ $bbrAtt1 == true ]]; then
 fi
 
 #for Copa jitter based attack logging
-if [[ $copaAtt1 == true ]]; then
-    
+if [[ $CCA == "copa" ]] && [[ $copa_attack_type == 1 ]]; then
+        
     uplink_link_logfilepath=$RAMDISK_DATA_PATH/$exp_tag.uplink
     if [[ -f $uplink_link_logfilepath ]]; then
         rm $uplink_link_logfilepath
     fi
+    echo "hey"
 
     downlink_link_logfilepath=$RAMDISK_DATA_PATH/$exp_tag.downlink
     if [[ -f $downlink_link_logfilepath ]]; then
         rm $downlink_link_logfilepath
     fi
+    echo "ho"
 
     uplink_attack_logfilepath=$RAMDISK_DATA_PATH/$exp_tag.uplink.attack
     if [[ -f $uplink_attack_logfilepath ]]; then
         rm $uplink_attack_logfilepath
     fi
+    echo "ya"
 
     downlink_attack_logfilepath=$RAMDISK_DATA_PATH/$exp_tag.downlink.attack
     if [[ -f $downlink_attack_logfilepath ]]; then
         rm $downlink_attack_logfilepath
     fi
+    echo "tr"
+    
 fi
 
 #For copa cross-traffic attack logging
-if [[ $copaAtt2 == true ]]; then
+if [[ $CCA == "copa" ]] && [[ $copa_attack_type == 2 ]]; then
+
     sender_attack_logfilepath=$RAMDISK_DATA_PATH/$exp_tag.sender.attack
     if [[ -f $sender_attack_logfilepath ]]; then
         rm $sender_attack_logfilepath
     fi
+    echo "copa attack 2"
+
 fi
 
 # receiver_attack_logfilepath=$RAMDISK_DATA_PATH/$exp_tag.receiver.attack
@@ -209,7 +212,7 @@ fi
 echo "Started server: $server_pid"
 
 #Start the attacker server for cross-traffic attack on Copa
-if [[ $copaAtt2 == true ]]; then
+if [[ $CCA == "copa" ]] && [[ $copa_attack_type == 2 ]]; then
     echo "Starting attack receiver"
     $COPA_ATT2_PATH/receiver $copaAtt2_port &  #we need a dynamically changing port variable here so hat the pids don't interfere with each other
     attack_receiver_pid=$!
@@ -260,6 +263,8 @@ export delay_ms
 export burst_duration
 export inter_burst_time
 
+export copa_attack_type
+
 export exp_tag
 
 # echo "Delay box"
@@ -293,24 +298,24 @@ if [[ $bbrAtt1 == true ]]; then # Condition for bbr attack 1
         mm-bbr-attack $attack_rate $queue_size $delay_budget --attack-log="$attack_log_path" \
         $SCRIPT_PATH/bottleneck_box.sh
 
-elif [[ $copaAtt1 == true ]]; then # Condition for copa attack 1
+elif [[ $copaAtt == true ]] && [[ $copa_attack_type == 1 ]]; then # Condition for copa attack 1
     echo "Jitter based attack scenario (attack 1) for Copa"
     mm-delay $delay_ms \
-        mm-copa-attack $delay_budget $duration $interval $uplink_link_logfilepath $downlink_link_logfilepath $uplink_attack_logfilepath $downlink_attack_logfilepath \
+        mm-copa-attack $delay_budget $burst_duration $inter_burst_time $uplink_link_logfilepath $downlink_link_logfilepath $uplink_attack_logfilepath $downlink_attack_logfilepath \
         $SCRIPT_PATH/bottleneck_box.sh
 
-elif [[ $copaAtt2 == true ]]; then # Condition for copa attack 2
+elif [[ $copaAtt == true ]] && [[ $copa_attack_type == 2 ]]; then # Condition for copa attack 2
     echo "Cross-traffic Scenario (attack 2) for Copa"
     mm-delay $delay_ms \
         $SCRIPT_PATH/bottleneck_box.sh
 
-elif [[ $noAttBBR == true ]]; then
-    echo "No attack scenrio for BBR"
-    mm-delay $delay_ms \
-            $delay_uplink_trace_file \
-            $downlink_trace_file \
-            --uplink-log="$uplink_log_path_delay_box" \
-            -- $SCRIPT_PATH/bottleneck_box.sh
+# elif [[ $noAtt == true ]]; then
+#     echo "No attack scenrio for BBR"
+#     mm-delay $delay_ms \
+#             $delay_uplink_trace_file \
+#             $downlink_trace_file \
+#             --uplink-log="$uplink_log_path_delay_box" \
+#             -- $SCRIPT_PATH/bottleneck_box.sh
 else 
     echo "No attack"
     mm-delay $delay_ms \
@@ -324,7 +329,7 @@ if [[ $bbrAtt1 == true ]]; then
     fi
 fi
 
-if [[ $copaAtt2 == true ]]; then
+if [[ $CCA == "copa" ]] && [[ $copa_attack_type == 2 ]]; then
     mv $sender_attack_logfilepath $DATA_PATH
 fi
 
@@ -332,7 +337,7 @@ if [[ $log_uplink == true ]]; then
     mv $uplink_log_path_delay_box $DATA_PATH
 fi
 
-if [[ $copaAtt1 == true ]]; then
+if [[ $CCA == "copa" ]] && [[ $copa_attack_type == 1 ]]; then
     mv $uplink_link_logfilepath $DATA_PATH
     mv $downlink_link_logfilepath $DATA_PATH
     mv $uplink_attack_logfilepath $DATA_PATH
@@ -349,7 +354,8 @@ sleep 5
 
 echo "Killing server"
 kill $server_pid
-if [[ $copaAtt2 == true ]]; then
+
+if [[ $CCA == "copa" ]] && [[ $copa_attack_type == 2 ]]; then
     kill $attack_receiver_pid
 fi
 

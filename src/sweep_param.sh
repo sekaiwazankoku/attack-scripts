@@ -1,15 +1,50 @@
 #!/bin/bash
 
-set -x
+#set -x
 set -e
 
 # Handle input flag
-if [[ $# -lt 1 ]]; then
-    echo "Usage: ./sweep_param.sh <flag>"
-    echo "Flag: 0 for BBR Attack 1, 1 for Copa Attack 1, 2 for Copa Attack 2, 3 for No Attack on BBR, 4 for No Attack on Copa"
+if [[ -z "$1" ]]; then   #$# -lt 3
+    echo "Usage: ./sweep_param.sh <attack flag> <cca> <1 or 2>"
+    echo "Attack Flag: true or false"
+    echo "CCA: Specify the congestion control algorithm (e.g., cubic, bbr)"
+    echo "Mode: 1 for normal operation, 2 for alternative configuration"
     exit 1
 fi
-FLAG=$1
+
+ATTACK_FLAG=$1
+CCA=$2
+MODE=$3
+
+export CCA
+export MODE
+
+# Validate inputs
+if [[ "$ATTACK_FLAG" != "true" && "$ATTACK_FLAG" != "false" ]]; then
+    echo "Invalid attack flag. Must be 'true' or 'false'."
+    exit 1
+fi
+
+if [[ "$ATTACK_FLAG" == "true" ]]; then
+    if [[ -z "$CCA" || -z "$MODE" ]]; then
+        echo "For attack=true, you must specify both <CCA> and <MODE>."
+        echo "Usage: ./sweep_param.sh true <CCA> <MODE>"
+        echo "CCA: Specify the congestion control algorithm (e.g., bbr, copa)"
+        echo "MODE: Specify mode (1 for attack 1 and 2 for attack 2)"
+        exit 1
+    fi
+    valid_ccas=("bbr" "copa")
+    if [[ ! " ${valid_ccas[@]} " =~ " $CCA " ]]; then
+        echo "Invalid CCA. Supported options are: ${valid_ccas[*]}"
+        exit 1
+    fi
+
+    valid_modes=(1 2)
+    if [[ ! " ${valid_modes[@]} " =~ " $MODE " ]]; then
+        echo "Invalid mode. Must be 1 or 2."
+        exit 1
+    fi
+fi
 
 TEST_MSG=$2
 export TEST_MSG
@@ -111,16 +146,6 @@ pkts_per_ms_choices=(8)
 #delay_budget_choices=(0 40)
 delay_budget_choices=(0)
 
-duration_choices=(10)
-
-# interval_choices=(80 120 160 200)
-# interval_choices=(80 90 100 110 120)
-# interval_choices=(80 100 120)
-# interval_choices=(80 90 100 110 115 120 125 130 140 150 200 320)
-# interval_choices=(140 150 160 170 180 190 200 210 220 240 260 280 320)
-interval_choices=(80 90 100 110 120 130 140 150 160 170 180 190 200 210 220 230 240 250 260 270 280 290 300 310 320)
-# interval_choices=(140 270)
-
 #Copa Attack 2
 
 #burst_duration
@@ -157,178 +182,129 @@ n_parallel=1
 # n_parallel=32
 # n_parallel=16
 
+if [[ "$ATTACK_FLAG" == "true" ]]; then
 
-if [[ $FLAG -eq 0 ]]; then
-    echo "Running BBR Attack 1 : Jitter based attack"
+    if [[ "$CCA" == "bbr" ]] && [[ "$MODE" -eq 1 ]]; then
+        echo "Running BBR Attack 1 : Jitter based attack"
 
-    i=0
-    exp_pids=()
-    for pkts_per_ms in "${pkts_per_ms_choices[@]}"; do
-    for delay_ms in "${delay_ms_choices[@]}"; do
-        if [[ $EXPERIMENT != "ideal" ]] && [[ $EXPERIMENT != "tbf" ]]; then
-            python $EXPERIMENTS_PATH/src/trace_generators/${EXPERIMENT}_trace.py $pkts_per_ms $delay_ms $TRACE_PATH
-        fi
-        # DATA_PATH=$DATA_PATH_ROOT/${EXPERIMENT}_half-rate[${pkts_per_ms}]-delay[${delay_ms}]
-        DATA_DIR=rate[${pkts_per_ms}]-delay[${delay_ms}]
-        DATA_PATH=$DATA_PATH_ROOT/$DATA_DIR
-        mkdir -p $DATA_PATH
-        export DATA_DIR
-        export DATA_PATH
-
-        for buf_size_bdp in "${buf_size_bdp_choices[@]}"; do
-        for cca in "${cca_choices[@]}"; do
-            if [[ $((i%n_parallel)) == 0 ]] && [[ $i -gt 0 ]]; then
-                wait "${pids[@]}"
+        i=0
+        exp_pids=()
+        for pkts_per_ms in "${pkts_per_ms_choices[@]}"; do
+        for delay_ms in "${delay_ms_choices[@]}"; do
+            if [[ $EXPERIMENT != "ideal" ]] && [[ $EXPERIMENT != "tbf" ]]; then
+                python $EXPERIMENTS_PATH/src/trace_generators/${EXPERIMENT}_trace.py $pkts_per_ms $delay_ms $TRACE_PATH
             fi
-            i=$((i+1))
+            # DATA_PATH=$DATA_PATH_ROOT/${EXPERIMENT}_half-rate[${pkts_per_ms}]-delay[${delay_ms}]
+            DATA_DIR=rate[${pkts_per_ms}]-delay[${delay_ms}]
+            DATA_PATH=$DATA_PATH_ROOT/$DATA_DIR
+            mkdir -p $DATA_PATH
+            export DATA_DIR
+            export DATA_PATH
 
-            echo "--------------------------------------------------------------------------------"
-            echo "Running experiment($i): Rate: $pkts_per_ms ppms, Delay: $delay_ms ms, Buffer: $buf_size_bdp BDP, CCA: $cca"
+            for buf_size_bdp in "${buf_size_bdp_choices[@]}"; do
+            for cca in "${cca_choices[@]}"; do
+                if [[ $((i%n_parallel)) == 0 ]] && [[ $i -gt 0 ]]; then
+                    wait "${pids[@]}"
+                fi
+                i=$((i+1))
 
-            if [[ $EXPERIMENT == "ideal" ]]; then
-                delay_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-                cbr_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-            else
-                delay_uplink_trace_file=$TRACE_PATH/rate[${pkts_per_ms}]-delay[${delay_ms}]-${EXPERIMENT}[${delay_ms}].trace
-                cbr_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-            fi
-            downlink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
+                echo "--------------------------------------------------------------------------------"
+                echo "Running experiment($i): Rate: $pkts_per_ms ppms, Delay: $delay_ms ms, Buffer: $buf_size_bdp BDP, CCA: $cca"
 
-            cmd="$SCRIPT_PATH/run_experiment.sh bbrAtt1 $pkts_per_ms $delay_ms $buf_size_bdp $cca " 
-            cmd+="$delay_uplink_trace_file $cbr_uplink_trace_file $downlink_trace_file "
-            cmd+="$((start_port + i)) $n_parallel $tbf_size_bdp"
-            echo $cmd
-            # sleep 5
-            # cmd="sleep 5"
-            export cmd
-            sh -c '$cmd' &
-            exp_pids+=($!)
-            sleep 2
+                if [[ $EXPERIMENT == "ideal" ]]; then
+                    delay_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
+                    cbr_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
+                else
+                    delay_uplink_trace_file=$TRACE_PATH/rate[${pkts_per_ms}]-delay[${delay_ms}]-${EXPERIMENT}[${delay_ms}].trace
+                    cbr_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
+                fi
+                downlink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
+
+                cmd="$SCRIPT_PATH/run_experiment.sh bbrAtt1 $pkts_per_ms $delay_ms $buf_size_bdp $cca " 
+                cmd+="$delay_uplink_trace_file $cbr_uplink_trace_file $downlink_trace_file "
+                cmd+="$((start_port + i)) $n_parallel $tbf_size_bdp"
+                echo $cmd
+                # sleep 5
+                # cmd="sleep 5"
+                export cmd
+                sh -c '$cmd' &
+                exp_pids+=($!)
+                sleep 2
+            done
+            done
+
         done
         done
 
-    done
-    done
+    elif [[ "$CCA" == "bbr" ]] && [[ "$MODE" -eq 2 ]]; then
+            echo "Error: No BBR Attack 2 scenario defined."
+            exit 1
+    fi
 
-elif [[ $FLAG -eq 1 ]]; then
-    echo "Running Copa Attack 1 : Jitter based attack"
+    
+    if [[ "$CCA" == "copa" ]]; then
 
-    i=0
-    exp_pids=()
-    for delay_budget in "${delay_budget_choices[@]}"; do
-    for duration in "${duration_choices[@]}"; do
-    for interval in "${interval_choices[@]}"; do
-    for pkts_per_ms in "${pkts_per_ms_choices[@]}"; do
-    for delay_ms in "${delay_ms_choices[@]}"; do
-        if [[ $EXPERIMENT != "ideal" ]] && [[ $EXPERIMENT != "tbf" ]]; then
-            python $EXPERIMENTS_PATH/src/trace_generators/${EXPERIMENT}_trace.py $pkts_per_ms $delay_ms $TRACE_PATH
-        fi
-        # DATA_PATH=$DATA_PATH_ROOT/${EXPERIMENT}_half-rate[${pkts_per_ms}]-delay[${delay_ms}]
-        DATA_DIR=rate[${pkts_per_ms}]-delay[${delay_ms}]-mode[${mode}]
-        DATA_PATH=$DATA_PATH_ROOT/$DATA_DIR
-        mkdir -p $DATA_PATH
-        export DATA_DIR
-        export DATA_PATH
+        echo "Running Copa Attack $MODE"
 
-        for buf_size_bdp in "${buf_size_bdp_choices[@]}"; do
-        for cca in "${cca_choices[@]}"; do
-            if [[ $((i%n_parallel)) == 0 ]] && [[ $i -gt 0 ]]; then
-                wait "${pids[@]}"
+        i=0
+        exp_pids=()
+        for delay_budget in "${delay_budget_choices[@]}"; do
+        for burst_duration in "${burst_duration_choices[@]}"; do
+        for inter_burst_time in "${inter_burst_choices[@]}"; do
+        for pkts_per_ms in "${pkts_per_ms_choices[@]}"; do
+        for delay_ms in "${delay_ms_choices[@]}"; do
+            if [[ $EXPERIMENT != "ideal" ]] && [[ $EXPERIMENT != "tbf" ]]; then
+                python $EXPERIMENTS_PATH/src/trace_generators/${EXPERIMENT}_trace.py $pkts_per_ms $delay_ms $TRACE_PATH
             fi
-            i=$((i+1))
+            # DATA_PATH=$DATA_PATH_ROOT/${EXPERIMENT}_half-rate[${pkts_per_ms}]-delay[${delay_ms}]
+            DATA_DIR=rate[${pkts_per_ms}]-delay[${delay_ms}]-mode[${mode}]
+            DATA_PATH=$DATA_PATH_ROOT/$DATA_DIR
+            mkdir -p $DATA_PATH
+            export DATA_DIR
+            export DATA_PATH
+            export MODE 
 
-            echo "--------------------------------------------------------------------------------"
-            echo "Running experiment($i): Rate: $pkts_per_ms ppms, Delay: $delay_ms ms, Buffer: $buf_size_bdp BDP, CCA: $cca"
+            for buf_size_bdp in "${buf_size_bdp_choices[@]}"; do
+            for cca in "${cca_choices[@]}"; do
+                if [[ $((i%n_parallel)) == 0 ]] && [[ $i -gt 0 ]]; then
+                    wait "${pids[@]}"
+                fi
+                i=$((i+1))
 
-            if [[ $EXPERIMENT == "ideal" ]]; then
-                delay_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-                cbr_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-            else
-                delay_uplink_trace_file=$TRACE_PATH/rate[${pkts_per_ms}]-delay[${delay_ms}]-${EXPERIMENT}[${delay_ms}].trace
-                cbr_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-            fi
-            downlink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
+                echo "--------------------------------------------------------------------------------"
+                echo "Running experiment($i): Rate: $pkts_per_ms ppms, Delay: $delay_ms ms, Buffer: $buf_size_bdp BDP, CCA: $cca"
 
-            cmd="$SCRIPT_PATH/run_experiment.sh copaAtt1 $pkts_per_ms $delay_ms $buf_size_bdp $cca "
-            cmd+="$delay_uplink_trace_file $cbr_uplink_trace_file $downlink_trace_file "
-            cmd+="$((start_port + i)) $n_parallel $tbf_size_bdp"
-            cmd+=" $delay_budget $duration $interval"
-            echo $cmd
-            # sleep 5
-            # cmd="sleep 5"
-            export cmd
-            sh -c '$cmd' &
-            exp_pids+=($!)
-            sleep 2
+                if [[ $EXPERIMENT == "ideal" ]]; then
+                    delay_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
+                    cbr_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
+                else
+                    delay_uplink_trace_file=$TRACE_PATH/rate[${pkts_per_ms}]-delay[${delay_ms}]-${EXPERIMENT}[${delay_ms}].trace
+                    cbr_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
+                fi
+                downlink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
+
+                cmd="$SCRIPT_PATH/run_experiment.sh copaAtt $pkts_per_ms $delay_ms $buf_size_bdp $cca " 
+                cmd+="$delay_uplink_trace_file $cbr_uplink_trace_file $downlink_trace_file "
+                cmd+="$((start_port + i)) $((copaAtt2_start_port + i)) $n_parallel $tbf_size_bdp" 
+                cmd+=" $delay_budget $burst_duration $inter_burst_time $MODE" #MODE is for copa attack 1 or 2
+                echo $cmd
+                # sleep 5
+                # cmd="sleep 5"
+                export cmd
+                sh -c '$cmd' &
+                exp_pids+=($!)
+                sleep 2
+            done
+            done
         done
         done
-
-    done
-    done
-    done
-    done
-    done
-
-elif [[ $FLAG -eq 2 ]]; then
-    echo "Running Copa Attack 2 : Cross-traffic attack"
-
-    i=0
-    exp_pids=()
-    for delay_budget in "${delay_budget_choices[@]}"; do
-    for burst_duration in "${burst_duration_choices[@]}"; do
-    for inter_burst_time in "${inter_burst_choices[@]}"; do
-    for pkts_per_ms in "${pkts_per_ms_choices[@]}"; do
-    for delay_ms in "${delay_ms_choices[@]}"; do
-        if [[ $EXPERIMENT != "ideal" ]] && [[ $EXPERIMENT != "tbf" ]]; then
-            python $EXPERIMENTS_PATH/src/trace_generators/${EXPERIMENT}_trace.py $pkts_per_ms $delay_ms $TRACE_PATH
-        fi
-        # DATA_PATH=$DATA_PATH_ROOT/${EXPERIMENT}_half-rate[${pkts_per_ms}]-delay[${delay_ms}]
-        DATA_DIR=rate[${pkts_per_ms}]-delay[${delay_ms}]-mode[${mode}]
-        DATA_PATH=$DATA_PATH_ROOT/$DATA_DIR
-        mkdir -p $DATA_PATH
-        export DATA_DIR
-        export DATA_PATH
-
-        for buf_size_bdp in "${buf_size_bdp_choices[@]}"; do
-        for cca in "${cca_choices[@]}"; do
-            if [[ $((i%n_parallel)) == 0 ]] && [[ $i -gt 0 ]]; then
-                wait "${pids[@]}"
-            fi
-            i=$((i+1))
-
-            echo "--------------------------------------------------------------------------------"
-            echo "Running experiment($i): Rate: $pkts_per_ms ppms, Delay: $delay_ms ms, Buffer: $buf_size_bdp BDP, CCA: $cca"
-
-            if [[ $EXPERIMENT == "ideal" ]]; then
-                delay_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-                cbr_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-            else
-                delay_uplink_trace_file=$TRACE_PATH/rate[${pkts_per_ms}]-delay[${delay_ms}]-${EXPERIMENT}[${delay_ms}].trace
-                cbr_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-            fi
-            downlink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-
-            cmd="$SCRIPT_PATH/run_experiment.sh copaAtt2 $pkts_per_ms $delay_ms $buf_size_bdp $cca " 
-            cmd+="$delay_uplink_trace_file $cbr_uplink_trace_file $downlink_trace_file "
-            cmd+="$((start_port + i)) $((copaAtt2_start_port + i)) $n_parallel $tbf_size_bdp" 
-            cmd+=" $delay_budget $burst_duration $inter_burst_time"
-            echo $cmd
-            # sleep 5
-            # cmd="sleep 5"
-            export cmd
-            sh -c '$cmd' &
-            exp_pids+=($!)
-            sleep 2
         done
         done
-    done
-    done
-    done
-    done
-    done
+        done
+    fi 
 
-elif [[ $FLAG -eq 3 ]]; then
-    echo "Running no Attack on BBR" 
+elif [[ "$ATTACK_FLAG" == "false" ]]; then  #line 306
+    echo "Running no Attack scenario" 
     
     i=0
     exp_pids=()
@@ -363,7 +339,7 @@ elif [[ $FLAG -eq 3 ]]; then
             fi
             downlink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
 
-            cmd="$SCRIPT_PATH/run_experiment.sh noAttBBR $pkts_per_ms $delay_ms $buf_size_bdp $cca " 
+            cmd="$SCRIPT_PATH/run_experiment.sh noAtt $pkts_per_ms $delay_ms $buf_size_bdp $cca " 
             cmd+="$delay_uplink_trace_file $cbr_uplink_trace_file $downlink_trace_file "
             cmd+="$((start_port + i)) $n_parallel $tbf_size_bdp"
             echo $cmd
@@ -379,83 +355,19 @@ elif [[ $FLAG -eq 3 ]]; then
     done
     done
 
-elif [[ $FLAG -eq 4 ]]; then
-    echo "Running no attack on Copa"
-
-    i=0
-    exp_pids=()
-    for delay_budget in "${delay_budget_choices[@]}"; do
-    for duration in "${duration_choices[@]}"; do
-    for interval in "${interval_choices[@]}"; do
-    for pkts_per_ms in "${pkts_per_ms_choices[@]}"; do
-    for delay_ms in "${delay_ms_choices[@]}"; do
-        if [[ $EXPERIMENT != "ideal" ]] && [[ $EXPERIMENT != "tbf" ]]; then
-            python $EXPERIMENTS_PATH/src/trace_generators/${EXPERIMENT}_trace.py $pkts_per_ms $delay_ms $TRACE_PATH
-        fi
-        # DATA_PATH=$DATA_PATH_ROOT/${EXPERIMENT}_half-rate[${pkts_per_ms}]-delay[${delay_ms}]
-        DATA_DIR=rate[${pkts_per_ms}]-delay[${delay_ms}]-mode[${mode}]
-        DATA_PATH=$DATA_PATH_ROOT/$DATA_DIR
-        mkdir -p $DATA_PATH
-        export DATA_DIR
-        export DATA_PATH
-
-        for buf_size_bdp in "${buf_size_bdp_choices[@]}"; do
-        for cca in "${cca_choices[@]}"; do
-            if [[ $((i%n_parallel)) == 0 ]] && [[ $i -gt 0 ]]; then
-                wait "${pids[@]}"
-            fi
-            i=$((i+1))
-
-            echo "--------------------------------------------------------------------------------"
-            echo "Running experiment($i): Rate: $pkts_per_ms ppms, Delay: $delay_ms ms, Buffer: $buf_size_bdp BDP, CCA: $cca"
-
-            if [[ $EXPERIMENT == "ideal" ]]; then
-                delay_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-                cbr_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-            else
-                delay_uplink_trace_file=$TRACE_PATH/rate[${pkts_per_ms}]-delay[${delay_ms}]-${EXPERIMENT}[${delay_ms}].trace
-                cbr_uplink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-            fi
-            downlink_trace_file=$TRACE_PATH/${pkts_per_ms}ppms.trace
-
-            cmd="$SCRIPT_PATH/run_experiment.sh $pkts_per_ms $delay_ms $buf_size_bdp $cca "
-            cmd+="$delay_uplink_trace_file $cbr_uplink_trace_file $downlink_trace_file "
-            cmd+="$((start_port + i)) $n_parallel $tbf_size_bdp"
-            cmd+=" $delay_budget $duration $interval"
-            echo $cmd
-            # sleep 5
-            # cmd="sleep 5"
-            export cmd
-            sh -c '$cmd' &
-            exp_pids+=($!)
-            sleep 2
-        done
-        done
-
-    done
-    done
-    done
-    done
-    done
-
-
-else
-    echo "Invalid flag: $FLAG"
-    exit 1
 fi
-
 
 # https://stackoverflow.com/questions/40377623/bash-wait-command-waiting-for-more-than-1-pid-to-finish-execution
 wait "${pids[@]}"
 echo "Done"
 
-if [[ $FLAG -eq 1 ]]; then
-    bash run_plotting.sh "${delay_budget_choices[*]}" "${delay_ms_choices[*]}" "${buf_size_bdp_choices[*]}" "${burst_duration_choices[*]}" "${interval_choices[*]}" "copaAtt1"
+if [[ "$CCA" == "copa" ]] && [[ "$MODE" -eq 1 ]]; then
+    bash run_plotting.sh "${delay_budget_choices[*]}" "${delay_ms_choices[*]}" "${buf_size_bdp_choices[*]}" "${burst_duration_choices[*]}" "${inter_burst_choices[*]}" "copaAtt1"
 fi
 
-if [[ $FLAG -eq 2 ]]; then
+if [[ "$CCA" == "copa" ]] && [[ "$MODE" -eq 2 ]]; then
     bash run_plotting.sh "${delay_budget_choices[*]}" "${delay_ms_choices[*]}" "${buf_size_bdp_choices[*]}" "${burst_duration_choices[*]}" "${inter_burst_choices[*]}" "copaAtt2"
 fi
 
-set +x
+#set +x
 set +e

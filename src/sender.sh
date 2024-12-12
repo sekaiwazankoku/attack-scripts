@@ -12,16 +12,18 @@ EXPERIMENTS_PATH=$(realpath $SCRIPT_PATH/../)
 GENERICCC_PATH=$(realpath $EXPERIMENTS_PATH/../ccas/genericCC)
 COPA_ATT2_PATH=/usr/local/bin
 
-#packet_size_bytes=1500           # Size of each packet in bytes
-bandwidth_mbps=$((12 * pkts_per_ms))             # Bandwidth in Mbps
-delay_amount=40
-bandwidth_bytes_per_ms=$((bandwidth_mbps * 1000000 / 8)) # Convert bandwidth to bytes/ms
-burst_size=$((bandwidth_bytes_per_ms * ((2 * delay_ms) + delay_amount + burst_duration)))  #1800000,2500000
-#burst_duration=40 
-#burst_interval=100
-attack_type=-c     #"either of -v or -c"
+if [[ $CCA == "copa" ]] && [[ $copa_attack_type == 2 ]]; then
+    #packet_size_bytes=1500           # Size of each packet in bytes
+    bandwidth_mbps=$((12 * pkts_per_ms))             # Bandwidth in Mbps
+    delay_amount=40
+    bandwidth_bytes_per_ms=$((bandwidth_mbps * 1000000 / 8)) # Convert bandwidth to bytes/ms
+    burst_size=$((bandwidth_bytes_per_ms * ((2 * delay_ms) + delay_amount + burst_duration)))  #1800000,2500000
+    #burst_duration=40 
+    #burst_interval=100
+    attack_type=-c     #"either of -v or -c"
 
-echo "attack type: $attack_type, bandwidth: $bandwidth_mbps, delay amount: $delay_amount Mbps"
+    echo "attack type: $attack_type, bandwidth: $bandwidth_mbps, delay amount: $delay_amount Mbps"
+fi
 
 launch_sender() {
     duration=30   #$1
@@ -66,7 +68,7 @@ launch_sender() {
         sender_cmd+="traffic_params=deterministic,num_cycles=1"
     fi
 
-    if [[ $copaAtt2 == true ]]; then
+    if [[ $CCA == "copa" ]] && [[ $copa_attack_type == 2 ]]; then
         # Launch Attack Sender (Copa Attack 2)
         echo "Starting attack sender for copa attack 2"
         echo "Burst Duration (ms): $burst_duration, Inter-burst Time (ms): $inter_burst_time"
