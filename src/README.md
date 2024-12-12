@@ -1,5 +1,4 @@
-# jitter-attack-scripts
-# Attack Scripts Repository
+# attack-scripts
 
 This repository contains scripts for running and analyzing attack scenarios on various congestion control algorithms (CCAs), specifically targeting BBR and Copa. The setup includes automation for launching experiments, logging results, and generating plots to analyze the effectiveness of the attacks.
 
