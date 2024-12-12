@@ -84,6 +84,13 @@ python3 parse_mahimahi.py -i <input_file> -o <output_file>
 ## Logging and Output Files
 - Logs are created for each attack scenario and can be found in the paths defined within `run_experiment.sh`.
 - Naming conventions for logs vary depending on the CCA type and scenario mode (attack/non-attack).
+- Log Files:
+- Created for each attack scenario and stored under the uplink-droptail-vm directory.
+- Each experiment creates a timestamped subdirectory `(+%Y%m%d%H%M%S)` where logs for a specific scenario are stored.
+- Plot Files:
+- Stored under the data directory.
+- Each experiment creates a timestamped subdirectory `(+%Y%m%d%H%M%S)`.
+- For attack scenarios, additional subdirectories mm-attack (for attack logs) and mm-link (for bottleneck link plots) are created within the timestamped directory.
 
 ## Notes
 - Ensure the correct CCA type is set in `sweep_param.sh` before running experiments.
